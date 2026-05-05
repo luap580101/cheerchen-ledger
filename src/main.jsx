@@ -16,26 +16,44 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
-      .then((registration) => {
-        registration.update();
+    if (import.meta.env.PROD) {
+      navigator.serviceWorker
+        .register("/sw.js", { updateViaCache: "none" })
+        .then((registration) => {
+          registration.update();
 
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: "SKIP_WAITING" });
+          if (registration.waiting) {
+            registration.waiting.postMessage({ type: "SKIP_WAITING" });
+          }
+        })
+        .catch((error) => {
+          console.warn("Service worker registration failed", error);
+        });
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) {
+          return;
         }
-      })
-      .catch((error) => {
-        console.warn("Service worker registration failed", error);
+        refreshing = true;
+        window.location.reload();
       });
+      return;
+    }
 
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshing) {
-        return;
-      }
-      refreshing = true;
-      window.location.reload();
+    // In local development, remove stale SW/caches to prevent serving old builds.
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        registration.unregister();
+      });
+    });
+
+    caches.keys().then((keys) => {
+      keys
+        .filter((key) => key.startsWith("cheerchen-ledger-"))
+        .forEach((key) => {
+          caches.delete(key);
+        });
     });
   });
 }
