@@ -95,6 +95,22 @@ const shouldUseRedirectFirst = () => {
   return isIOS || isSafariDesktop;
 };
 
+const getAuthErrorMessage = (err) => {
+  const code = err?.code || "未知錯誤";
+  const message = err?.message || "Google 登入失敗";
+
+  if (code === "auth/unauthorized-domain") {
+    const host = typeof window !== "undefined" ? window.location.host : "目前網域";
+    return `auth/unauthorized-domain：請到 Firebase Authentication > Sign-in method > Authorized domains 加入 ${host}`;
+  }
+
+  if (code === "auth/web-storage-unsupported") {
+    return "auth/web-storage-unsupported：Safari 目前無法使用必要儲存，請關閉無痕或允許網站資料後再試。";
+  }
+
+  return `${code}：${message}`;
+};
+
 export default function App() {
   const dispatch = useDispatch();
   const [isPending, startTransition] = useTransition();
@@ -368,8 +384,14 @@ export default function App() {
 
       if (shouldUseRedirectFirst()) {
         if (currentUser?.isAnonymous) {
-          await linkWithRedirect(currentUser, googleProvider);
-          return;
+          try {
+            await linkWithRedirect(currentUser, googleProvider);
+            return;
+          } catch (safariLinkError) {
+            // Safari 有時無法完成匿名連結，改為先登出匿名後直接 Google redirect。
+            console.warn("Safari anonymous link redirect failed, fallback to direct redirect sign-in", safariLinkError);
+            await signOut(auth);
+          }
         }
 
         await signInWithRedirect(auth, googleProvider);
@@ -406,13 +428,13 @@ export default function App() {
           return;
         } catch (redirectError) {
           console.error("Google redirect fallback error:", redirectError.code, redirectError.message);
-          setSetupError(`${redirectError.code || "未知錯誤"}：${redirectError.message || "Google 登入失敗"}`);
+          setSetupError(getAuthErrorMessage(redirectError));
           return;
         }
       }
 
       console.error("Google sign-in error:", err.code, err.message);
-      setSetupError(`${err.code || "未知錯誤"}：${err.message || "Google 登入失敗"}`);
+      setSetupError(getAuthErrorMessage(err));
     } finally {
       setGoogleLoading(false);
     }
