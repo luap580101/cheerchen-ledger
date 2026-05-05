@@ -108,6 +108,14 @@ const getAuthErrorMessage = (err) => {
     return "auth/web-storage-unsupported：Safari 目前無法使用必要儲存，請關閉無痕或允許網站資料後再試。";
   }
 
+  if (code === "auth/internal-error") {
+    const ua = navigator.userAgent || "";
+    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR|SamsungBrowser|Firefox/i.test(ua);
+    if (isSafari) {
+      return "auth/internal-error：Safari 登入內部錯誤。請試試：1) 關閉無痕瀏覽 2) 允許網站儲存資料 3) 清空 Safari 快取後重試。";
+    }
+  }
+
   return `${code}：${message}`;
 };
 
@@ -390,7 +398,9 @@ export default function App() {
           } catch (safariLinkError) {
             // Safari 有時無法完成匿名連結，改為先登出匿名後直接 Google redirect。
             console.warn("Safari anonymous link redirect failed, fallback to direct redirect sign-in", safariLinkError);
-            await signOut(auth);
+            if (safariLinkError?.code !== "auth/internal-error") {
+              await signOut(auth);
+            }
           }
         }
 
