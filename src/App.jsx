@@ -82,6 +82,19 @@ const shouldFallbackToRedirect = (code = "") =>
     code
   );
 
+const shouldUseRedirectFirst = () => {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPad|iPhone|iPod/i.test(ua);
+  const isChromeLike = /Chrome|Chromium|CriOS|Edg|OPR|SamsungBrowser|Firefox|FxiOS/i.test(ua);
+  const isSafariDesktop = /Safari/i.test(ua) && !isChromeLike;
+
+  return isIOS || isSafariDesktop;
+};
+
 export default function App() {
   const dispatch = useDispatch();
   const [isPending, startTransition] = useTransition();
@@ -352,6 +365,16 @@ export default function App() {
 
     try {
       const currentUser = auth.currentUser;
+
+      if (shouldUseRedirectFirst()) {
+        if (currentUser?.isAnonymous) {
+          await linkWithRedirect(currentUser, googleProvider);
+          return;
+        }
+
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
 
       if (currentUser?.isAnonymous) {
         try {
