@@ -4,13 +4,13 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { enableIndexedDbPersistence, getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "jJ4n4",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "ch.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "cheeen-ledger",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "chge.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "181107",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1021469081107:we6",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-L232"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || ".",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
 
 export const app = initializeApp(firebaseConfig);
