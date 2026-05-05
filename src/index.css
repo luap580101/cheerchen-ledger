@@ -8,6 +8,10 @@
   color-scheme: light;
 }
 
+:root.dark {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -24,4 +28,10 @@ body {
 .bg-app {
   background-image: radial-gradient(circle at right top, rgba(14, 59, 46, 0.14), transparent 34%),
     radial-gradient(circle at left bottom, rgba(255, 202, 93, 0.2), transparent 26%);
+}
+
+:root.dark .bg-app {
+  background-image: radial-gradient(circle at right top, rgba(16, 185, 129, 0.16), transparent 34%),
+    radial-gradient(circle at left bottom, rgba(245, 158, 11, 0.18), transparent 30%),
+    linear-gradient(180deg, #000000, #020617 52%, #000000);
 }

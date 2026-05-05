@@ -41,7 +41,7 @@ export default function EntryForm({ onSubmit, submitting }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur">
+    <form onSubmit={handleSubmit} className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur dark:bg-slate-900/90">
       <div className="grid grid-cols-2 gap-3">
         {typeOptions.map(({ value, label, icon: Icon }) => (
           <button
@@ -51,7 +51,7 @@ export default function EntryForm({ onSubmit, submitting }) {
             className={`flex h-14 items-center justify-center gap-2 rounded-2xl border text-lg font-semibold transition ${
               form.type === value
                 ? "border-emerald-700 bg-emerald-700 text-white"
-                : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
             }`}
           >
             <Icon size={20} />
@@ -70,7 +70,7 @@ export default function EntryForm({ onSubmit, submitting }) {
               className={`flex h-12 items-center justify-center gap-2 rounded-2xl border font-semibold transition ${
                 form.paymentMethod === value
                   ? "border-orange-500 bg-orange-500 text-white"
-                  : "border-orange-200 bg-orange-50 text-orange-900"
+                    : "border-orange-200 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-200"
               }`}
             >
               <Icon size={18} />
@@ -82,7 +82,7 @@ export default function EntryForm({ onSubmit, submitting }) {
 
       <div className="mt-4 space-y-3">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">金額</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">金額</span>
           <input
             type="number"
             min="0"
@@ -90,18 +90,18 @@ export default function EntryForm({ onSubmit, submitting }) {
             value={form.amount}
             onChange={(event) => update("amount", event.target.value)}
             placeholder="例如 380"
-            className="h-14 w-full rounded-2xl border border-slate-200 px-4 text-xl font-semibold outline-none ring-emerald-200 focus:ring"
+            className="h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xl font-semibold outline-none ring-emerald-200 focus:ring dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">項目</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">項目</span>
           <input
             type="text"
             value={form.item}
             onChange={(event) => update("item", event.target.value)}
             placeholder="午餐 / 交通 / 薪資..."
-            className="h-14 w-full rounded-2xl border border-slate-200 px-4 text-base outline-none ring-emerald-200 focus:ring"
+            className="h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base outline-none ring-emerald-200 focus:ring dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         </label>
 

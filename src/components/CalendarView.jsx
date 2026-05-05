@@ -41,7 +41,7 @@ export default function CalendarView({
   }, [selectedDate, transactions]);
 
   return (
-    <section className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur">
+    <section className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur dark:bg-slate-900/90">
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
@@ -53,7 +53,7 @@ export default function CalendarView({
         >
           <ChevronLeft size={20} />
         </button>
-        <h2 className="text-lg font-bold text-slate-900">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
           {viewDate.getFullYear()} 年 {viewDate.getMonth() + 1} 月
         </h2>
         <button
@@ -68,7 +68,7 @@ export default function CalendarView({
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500">
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
         {weekLabels.map((label) => (
           <div key={label} className="py-1">
             {label}
@@ -91,13 +91,13 @@ export default function CalendarView({
                 active
                   ? "border-emerald-700 bg-emerald-700 text-white"
                   : cell.isCurrentMonth
-                    ? "border-slate-200 bg-white"
-                    : "border-slate-100 bg-slate-50 text-slate-400"
+                      ? "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                      : "border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950"
               }`}
             >
               <div className="text-xs font-bold">{cell.day}</div>
               {summary && (
-                <div className={`mt-1 text-[10px] font-semibold ${active ? "text-white" : "text-slate-700"}`}>
+                <div className={`mt-1 text-[10px] font-semibold ${active ? "text-white" : "text-slate-700 dark:text-slate-200"}`}>
                   {balance >= 0 ? "+" : ""}
                   {balance}
                 </div>
@@ -108,18 +108,18 @@ export default function CalendarView({
       </div>
 
       <div className="mt-4">
-        <h3 className="text-base font-bold text-slate-900">{formatDisplayDate(selectedDate)} 明細</h3>
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{formatDisplayDate(selectedDate)} 明細</h3>
         <ul className="mt-2 space-y-2">
           {selectedDetails.length === 0 && (
-            <li className="rounded-xl border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+            <li className="rounded-xl border border-dashed border-slate-200 p-3 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
               這天尚無記錄
             </li>
           )}
           {selectedDetails.map((item) => (
-            <li key={item.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
+            <li key={item.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-950/30">
               <div>
-                <p className="font-semibold text-slate-900">{item.item}</p>
-                <p className="text-xs text-slate-500">
+                <p className="font-semibold text-slate-900 dark:text-slate-100">{item.item}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {item.type === "expense" ? "支出" : "收入"}
                   {item.type === "expense" ? ` / ${item.paymentMethod === "card" ? "刷卡" : "現金"}` : ""}
                 </p>
