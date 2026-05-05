@@ -17,6 +17,14 @@ const APP_VERSION = packageJson.version;
 const AUTH_MODE_KEY = "login";
 const AUTH_MODE_REGISTER = "register";
 
+const toFirebaseEmail = (account) => {
+  const normalized = String(account || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (!normalized) {
+    return "";
+  }
+  return normalized.includes("@") ? normalized : `${normalized}@cheerchen.local`;
+};
+
 const views = [
   { key: "home", label: "首頁", eyebrow: "Ledger Home", title: "原本首頁", description: "這裡先保留給原本記帳首頁，之後再把主要功能放回來。" },
   {
@@ -42,7 +50,7 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMode, setAuthMode] = useState(AUTH_MODE_KEY);
   const [authError, setAuthError] = useState("");
-  const [email, setEmail] = useState("");
+  const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const currentView = views.find((view) => view.key === activeView) || views[0];
   const hasFirebaseConfig = firebaseConfigIssues.length === 0;
@@ -153,10 +161,12 @@ export default function App() {
     setAuthError("");
 
     try {
+      const firebaseEmail = toFirebaseEmail(account);
+
       if (authMode === AUTH_MODE_KEY) {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        await signInWithEmailAndPassword(auth, firebaseEmail, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await createUserWithEmailAndPassword(auth, firebaseEmail, password);
       }
       setPassword("");
     } catch (error) {
@@ -261,7 +271,7 @@ export default function App() {
                 <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">Authentication</p>
                 <h2 className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-50">登入你的帳號</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  支援 Google 登入與 Email/Password。這一版先把認證打通，登入後才顯示首頁與體重變化頁籤。
+                  支援 Google 登入與帳號密碼。帳號會自動轉成 Firebase 可用格式，個人使用不用真的輸入信箱。
                 </p>
               </div>
 
@@ -309,15 +319,14 @@ export default function App() {
 
                 <form className="space-y-3" onSubmit={handleEmailAuth}>
                   <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Email</span>
+                    <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">帳號</span>
                     <input
-                      type="email"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      placeholder="you@example.com"
+                      type="text"
+                      value={account}
+                      onChange={(event) => setAccount(event.target.value)}
+                      placeholder="例如 paul"
                       className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none ring-lime-300 focus:ring dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                      autoComplete="email"
-                      required
+                      autoComplete="username"
                     />
                   </label>
                   <label className="block">
@@ -326,11 +335,9 @@ export default function App() {
                       type="password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
-                      placeholder="至少 6 碼"
+                      placeholder="輸入密碼"
                       className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none ring-lime-300 focus:ring dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                       autoComplete={authMode === AUTH_MODE_KEY ? "current-password" : "new-password"}
-                      minLength={6}
-                      required
                     />
                   </label>
                   <button
