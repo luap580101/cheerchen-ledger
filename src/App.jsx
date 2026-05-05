@@ -9,11 +9,10 @@ import {
 } from "firebase/auth";
 import { LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import packageJson from "../package.json";
 import { auth, firebaseConfigIssues, googleProvider } from "./firebase";
 
 const THEME_MODE_KEY = "cheerchen_theme_mode";
-const APP_VERSION = packageJson.version;
+const APP_VERSION = __APP_COMMIT__;
 const AUTH_MODE_KEY = "login";
 const AUTH_MODE_REGISTER = "register";
 
