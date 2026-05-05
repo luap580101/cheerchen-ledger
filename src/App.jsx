@@ -1,11 +1,20 @@
-import { GoogleAuthProvider, linkWithPopup, onAuthStateChanged, signInAnonymously, signInWithPopup, signOut } from "firebase/auth";
+import {
+  getRedirectResult,
+  GoogleAuthProvider,
+  linkWithPopup,
+  linkWithRedirect,
+  onAuthStateChanged,
+  signInWithCredential,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut
+} from "firebase/auth";
 import {
   collection,
   deleteDoc,
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -68,6 +77,11 @@ const saveLocalTransactions = (items) => {
   localStorage.setItem(LOCAL_TX_KEY, JSON.stringify(items));
 };
 
+const shouldFallbackToRedirect = (code = "") =>
+  ["auth/popup-blocked", "auth/operation-not-supported-in-this-environment", "auth/web-storage-unsupported"].includes(
+    code
+  );
+
 export default function App() {
   const dispatch = useDispatch();
   const [isPending, startTransition] = useTransition();
@@ -110,31 +124,54 @@ export default function App() {
         setUid(user.uid);
         const googleInfo = user.providerData.find((p) => p.providerId === "google.com");
         setGoogleUser(googleInfo ? { displayName: user.displayName, email: user.email, photoURL: user.photoURL } : null);
+        dispatch(setSyncStatus("syncing"));
+        setSetupError("");
         return;
       }
 
+      setUid("");
       setGoogleUser(null);
-      signInAnonymously(auth)
-        .then((credential) => {
-          setUid(credential.user.uid);
-        })
-        .catch((signInError) => {
-          if (signInError.code === "auth/configuration-not-found") {
-            setLocalMode(true);
-            const records = loadLocalTransactions();
-            dispatch(setTransactions(records));
-            dispatch(setSyncStatus("local"));
-            setSetupError("Firebase 尚未啟用 Anonymous Auth，已切換本機模式。");
-            return;
-          }
-
-          setSetupError(signInError.message || "匿名登入失敗");
-          dispatch(setSyncStatus("failed"));
-        });
+      dispatch(setTransactions([]));
+      dispatch(setSyncStatus("idle"));
     });
 
     return () => unsub();
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!auth) {
+      return;
+    }
+
+    let active = true;
+    setGoogleLoading(true);
+
+    getRedirectResult(auth)
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+        if (result?.user) {
+          setSetupError("");
+        }
+      })
+      .catch((redirectError) => {
+        if (!active) {
+          return;
+        }
+        console.error("Google redirect sign-in error:", redirectError.code, redirectError.message);
+        setSetupError(`${redirectError.code || "未知錯誤"}：${redirectError.message || "Google 登入失敗"}`);
+      })
+      .finally(() => {
+        if (active) {
+          setGoogleLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (localMode || !db || !uid) {
@@ -143,12 +180,8 @@ export default function App() {
 
     hasServerSnapshotRef.current = false;
     dispatch(setSyncStatus("syncing"));
-    const source = query(
-      collection(db, "transactions"),
-      where("uid", "==", uid),
-      where("date", ">=", getFourMonthAgoISO()),
-      orderBy("date", "desc")
-    );
+    const source = query(collection(db, "transactions"), where("uid", "==", uid));
+    const cutoffDate = getFourMonthAgoISO();
 
     const unsubscribe = onSnapshot(
       source,
@@ -158,15 +191,17 @@ export default function App() {
           hasServerSnapshotRef.current = true;
         }
 
-        const next = snapshot.docs.map((entry) => {
-          const data = entry.data();
-          return {
-            id: entry.id,
-            ...data,
-            amount: Number(data.amount),
-            createdAtMs: data.createdAt?.toMillis?.() || 0
-          };
-        });
+        const next = snapshot.docs
+          .map((entry) => {
+            const data = entry.data();
+            return {
+              id: entry.id,
+              ...data,
+              amount: Number(data.amount),
+              createdAtMs: data.createdAt?.toMillis?.() || 0
+            };
+          })
+          .filter((entry) => entry.date >= cutoffDate);
 
         startTransition(() => {
           dispatch(setTransactions(next));
@@ -273,7 +308,7 @@ export default function App() {
   }, [transactions]);
 
   const handleAdd = (form) => {
-    if (localMode || !db || !uid) {
+    if (localMode || !db) {
       const localItem = {
         id: `local_${Date.now()}`,
         ...form,
@@ -286,6 +321,11 @@ export default function App() {
       saveLocalTransactions(next);
       dispatch(setTransactions(next));
       dispatch(setSyncStatus("local"));
+      return;
+    }
+
+    if (!uid) {
+      setSetupError("請先使用 Google 登入，再新增記帳資料。");
       return;
     }
 
@@ -308,26 +348,48 @@ export default function App() {
     if (!auth || !googleProvider) return;
     setGoogleLoading(true);
     setSetupError("");
+    googleProvider.setCustomParameters({ prompt: "select_account" });
+
     try {
       const currentUser = auth.currentUser;
+
       if (currentUser?.isAnonymous) {
-        // 將匿名帳號連結至 Google，保留現有資料
-        await linkWithPopup(currentUser, googleProvider);
-      } else {
-        await signInWithPopup(auth, googleProvider);
-      }
-    } catch (err) {
-      if (err.code === "auth/credential-already-in-use") {
-        // 該 Google 帳號已存在獨立帳號，直接登入（切換 uid，資料以 Google 帳號為準）
         try {
-          const credential = GoogleAuthProvider.credentialFromError(err);
-          await signInWithPopup(auth, googleProvider);
-        } catch (retryErr) {
-          setSetupError(retryErr.message || "Google 登入失敗");
+          await linkWithPopup(currentUser, googleProvider);
+          return;
+        } catch (linkError) {
+          if (linkError.code === "auth/credential-already-in-use") {
+            const credential = GoogleAuthProvider.credentialFromError(linkError);
+            if (credential) {
+              await signInWithCredential(auth, credential);
+              return;
+            }
+          }
+
+          if (shouldFallbackToRedirect(linkError.code)) {
+            await linkWithRedirect(currentUser, googleProvider);
+            return;
+          }
+
+          throw linkError;
         }
-      } else if (err.code !== "auth/popup-closed-by-user" && err.code !== "auth/cancelled-popup-request") {
-        setSetupError(err.message || "Google 登入失敗");
       }
+
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      if (shouldFallbackToRedirect(err.code)) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectError) {
+          console.error("Google redirect fallback error:", redirectError.code, redirectError.message);
+          setSetupError(`${redirectError.code || "未知錯誤"}：${redirectError.message || "Google 登入失敗"}`);
+          return;
+        }
+      }
+
+      console.error("Google sign-in error:", err.code, err.message);
+      setSetupError(`${err.code || "未知錯誤"}：${err.message || "Google 登入失敗"}`);
     } finally {
       setGoogleLoading(false);
     }
@@ -448,6 +510,11 @@ export default function App() {
               {!localMode && auth && (
                 <div className="border-t border-white/10 pt-3">
                   <p className="mb-2 font-semibold">帳號同步</p>
+                  {uid && (
+                    <p className="mb-2 text-[11px] text-white/60">
+                      目前身份：{googleUser ? "Google 雲端模式" : "匿名模式（僅此瀏覽器）"} / UID: {uid}
+                    </p>
+                  )}
                   {googleUser ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
@@ -499,6 +566,12 @@ export default function App() {
           )}
           {isPending && <p className="mt-2 text-xs text-emerald-100">同步更新中...</p>}
           {setupError && <p className="mt-2 text-xs text-amber-200">{setupError}</p>}
+          {!localMode && !uid && (
+            <p className="mt-2 text-xs text-slate-200">尚未登入，請點設定中的「使用 Google 登入」以啟用跨裝置同步。</p>
+          )}
+          {!localMode && uid && (
+            <p className="mt-2 text-xs text-slate-200">目前同步身份 UID：{uid}</p>
+          )}
           {localMode && <p className="mt-2 text-xs text-slate-200">目前為本機模式，資料儲存在此裝置。</p>}
           {error && <p className="mt-2 text-xs text-rose-200">{error}</p>}
         </header>
