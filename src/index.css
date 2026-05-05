@@ -1,0 +1,27 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Poppins:wght@600;700;800;900&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: radial-gradient(circle at 20% 10%, #f7ffc8 0%, rgba(247, 255, 200, 0) 35%),
+    radial-gradient(circle at 80% 20%, #d6f1ff 0%, rgba(214, 241, 255, 0) 35%),
+    linear-gradient(160deg, #f4f7ec, #e9f4f4 52%, #f9efe4);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.bg-app {
+  background-image: radial-gradient(circle at right top, rgba(14, 59, 46, 0.14), transparent 34%),
+    radial-gradient(circle at left bottom, rgba(255, 202, 93, 0.2), transparent 26%);
+}

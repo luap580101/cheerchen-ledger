@@ -1,0 +1,129 @@
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { Suspense, lazy, useEffect, useMemo, useState, useTransition } from "react";
+import { Cloud, CloudOff, LoaderCircle } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import CalendarView from "./components/CalendarView";
+import EntryForm from "./components/EntryForm";
+import { addTransaction, setSelectedDate, setSyncStatus, setTransactions } from "./features/ledger/ledgerSlice";
+import { db } from "./firebase";
+
+const StatsPanel = lazy(() => import("./components/StatsPanel"));
+
+const getFourMonthAgoISO = () => {
+  const base = new Date();
+  base.setMonth(base.getMonth() - 4);
+  return base.toISOString().slice(0, 10);
+};
+
+export default function App() {
+  const dispatch = useDispatch();
+  const [isPending, startTransition] = useTransition();
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  const { transactions, selectedDate, syncStatus, submitStatus, error } = useSelector(
+    (state) => state.ledger
+  );
+
+  useEffect(() => {
+    dispatch(setSyncStatus("syncing"));
+    const source = query(
+      collection(db, "transactions"),
+      where("date", ">=", getFourMonthAgoISO()),
+      orderBy("date", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      source,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        const next = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAtMs: data.createdAt?.toMillis?.() || 0
+          };
+        });
+
+        // Let React prioritize touch interactions before applying large list updates.
+        startTransition(() => {
+          dispatch(setTransactions(next));
+          dispatch(setSyncStatus(snapshot.metadata.fromCache ? "offline" : "synced"));
+        });
+      },
+      () => {
+        dispatch(setSyncStatus("failed"));
+      }
+    );
+
+    return () => unsubscribe();
+  }, [dispatch]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOffline(false);
+    const onOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  const sortedTransactions = useMemo(() => {
+    return [...transactions].sort((a, b) => {
+      if (a.date !== b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return (b.createdAtMs || 0) - (a.createdAtMs || 0);
+    });
+  }, [transactions]);
+
+  const handleAdd = (form) => {
+    dispatch(addTransaction(form));
+  };
+
+  const syncLabel =
+    syncStatus === "syncing" ? "同步中" : syncStatus === "failed" ? "同步失敗" : "已同步";
+
+  return (
+    <main className="min-h-dvh bg-app px-3 pb-20 pt-4 font-body text-slate-900">
+      <div className="mx-auto w-full max-w-[460px] space-y-4">
+        <header className="rounded-3xl bg-emerald-900/90 p-4 text-white shadow-card">
+          <p className="text-xs uppercase tracking-[0.24em] text-emerald-200">CheerChen Ledger</p>
+          <h1 className="mt-1 text-2xl font-black">個人記帳 PWA</h1>
+          <div className="mt-3 flex items-center gap-2 text-sm">
+            {isOffline || syncStatus === "offline" ? (
+              <CloudOff size={16} className="text-yellow-300" />
+            ) : (
+              <Cloud size={16} className="text-emerald-200" />
+            )}
+            <span>{isOffline ? "離線模式（已啟用本地快取）" : syncLabel}</span>
+            {isPending && <LoaderCircle size={16} className="animate-spin" />}
+          </div>
+          {error && <p className="mt-2 text-xs text-rose-200">{error}</p>}
+        </header>
+
+        <EntryForm onSubmit={handleAdd} submitting={submitStatus === "loading"} />
+
+        <CalendarView
+          transactions={sortedTransactions}
+          selectedDate={selectedDate}
+          onSelectDate={(date) => dispatch(setSelectedDate(date))}
+        />
+
+        <Suspense
+          fallback={
+            <section className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur">
+              <p className="text-sm text-slate-500">統計載入中...</p>
+            </section>
+          }
+        >
+          <StatsPanel transactions={sortedTransactions} selectedDate={selectedDate} />
+        </Suspense>
+      </div>
+    </main>
+  );
+}
