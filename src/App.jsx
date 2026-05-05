@@ -1,8 +1,10 @@
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import packageJson from "../package.json";
 import { firebaseConfigIssues } from "./firebase";
 
 const THEME_MODE_KEY = "cheerchen_theme_mode";
+const APP_VERSION = packageJson.version;
 
 const views = [
   { key: "home", label: "首頁", eyebrow: "Ledger Home", title: "原本首頁", description: "這裡先保留給原本記帳首頁，之後再把主要功能放回來。" },
@@ -17,7 +19,13 @@ const views = [
 
 export default function App() {
   const [activeView, setActiveView] = useState("home");
-  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem(THEME_MODE_KEY) === "dark");
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem(THEME_MODE_KEY);
+    if (savedTheme === "light") {
+      return false;
+    }
+    return true;
+  });
   const currentView = views.find((view) => view.key === activeView) || views[0];
 
   useEffect(() => {
@@ -101,6 +109,10 @@ export default function App() {
             </div>
           )}
         </section>
+      </div>
+
+      <div className="pointer-events-none fixed bottom-4 right-4 rounded-full border border-white/10 bg-slate-950/85 px-3 py-1.5 text-xs font-semibold tracking-[0.18em] text-slate-300 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:text-slate-200">
+        v{APP_VERSION}
       </div>
     </main>
   );
