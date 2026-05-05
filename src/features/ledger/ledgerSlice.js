@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase";
 
 const today = new Date().toISOString().slice(0, 10);
@@ -25,6 +25,22 @@ export const addTransaction = createAsyncThunk(
   }
 );
 
+export const deleteTransaction = createAsyncThunk(
+  "ledger/deleteTransaction",
+  async ({ id }, { rejectWithValue }) => {
+    try {
+      if (!id) {
+        return rejectWithValue("Missing transaction id");
+      }
+
+      await deleteDoc(doc(db, "transactions", id));
+      return id;
+    } catch (error) {
+      return rejectWithValue(error.message || "Failed to delete transaction");
+    }
+  }
+);
+
 const ledgerSlice = createSlice({
   name: "ledger",
   initialState: {
@@ -32,6 +48,7 @@ const ledgerSlice = createSlice({
     selectedDate: today,
     syncStatus: "idle",
     submitStatus: "idle",
+    deleteStatus: "idle",
     error: null
   },
   reducers: {
@@ -58,6 +75,17 @@ const ledgerSlice = createSlice({
       .addCase(addTransaction.rejected, (state, action) => {
         state.submitStatus = "failed";
         state.error = action.payload || "Failed to add transaction";
+      })
+      .addCase(deleteTransaction.pending, (state) => {
+        state.deleteStatus = "loading";
+      })
+      .addCase(deleteTransaction.fulfilled, (state) => {
+        state.deleteStatus = "succeeded";
+        state.error = null;
+      })
+      .addCase(deleteTransaction.rejected, (state, action) => {
+        state.deleteStatus = "failed";
+        state.error = action.payload || "Failed to delete transaction";
       });
   }
 });

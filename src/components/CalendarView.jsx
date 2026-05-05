@@ -1,10 +1,16 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatDisplayDate, getMonthGrid } from "../utils/date";
 
 const weekLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
-export default function CalendarView({ transactions, selectedDate, onSelectDate }) {
+export default function CalendarView({
+  transactions,
+  selectedDate,
+  onSelectDate,
+  onDeleteTransaction,
+  deletingId
+}) {
   const [viewDate, setViewDate] = useState(() => {
     const base = selectedDate ? new Date(`${selectedDate}T00:00:00`) : new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
@@ -118,14 +124,25 @@ export default function CalendarView({ transactions, selectedDate, onSelectDate 
                   {item.type === "expense" ? ` / ${item.paymentMethod === "card" ? "刷卡" : "現金"}` : ""}
                 </p>
               </div>
-              <p
-                className={`text-lg font-bold ${
-                  item.type === "expense" ? "text-rose-600" : "text-emerald-700"
-                }`}
-              >
-                {item.type === "expense" ? "-" : "+"}
-                {Number(item.amount)}
-              </p>
+              <div className="ml-3 flex items-center gap-3">
+                <p
+                  className={`text-lg font-bold ${
+                    item.type === "expense" ? "text-rose-600" : "text-emerald-700"
+                  }`}
+                >
+                  {item.type === "expense" ? "-" : "+"}
+                  {Number(item.amount)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onDeleteTransaction?.(item)}
+                  disabled={deletingId === item.id}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="刪除記錄"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
