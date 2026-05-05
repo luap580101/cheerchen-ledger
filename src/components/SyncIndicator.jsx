@@ -16,6 +16,11 @@ const styles = {
     dot: "bg-amber-400",
     text: "離線模式"
   },
+  local: {
+    icon: CloudOff,
+    dot: "bg-slate-400",
+    text: "本機模式"
+  },
   failed: {
     icon: TriangleAlert,
     dot: "bg-rose-400",

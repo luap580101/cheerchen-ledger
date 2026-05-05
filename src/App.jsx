@@ -22,6 +22,7 @@ import { auth, db, firebaseConfigIssues } from "./firebase";
 
 const BUDGET_KEY = "cheerchen_monthly_budget";
 const THEME_MODE_KEY = "cheerchen_theme_mode";
+const LOCAL_TX_KEY = "cheerchen_local_transactions";
 const StatsPanel = lazy(() => import("./components/StatsPanel"));
 
 const recurringTemplates = [
@@ -50,6 +51,23 @@ const resolveTheme = (mode) => {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 };
 
+const loadLocalTransactions = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_TX_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveLocalTransactions = (items) => {
+  localStorage.setItem(LOCAL_TX_KEY, JSON.stringify(items));
+};
+
 export default function App() {
   const dispatch = useDispatch();
   const [isPending, startTransition] = useTransition();
@@ -59,6 +77,7 @@ export default function App() {
   const [monthlyBudget, setMonthlyBudget] = useState(() => localStorage.getItem(BUDGET_KEY) || "30000");
   const [setupError, setSetupError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [localMode, setLocalMode] = useState(false);
 
   const { transactions, selectedDate, syncStatus, error } = useSelector((state) => state.ledger);
 
@@ -76,6 +95,10 @@ export default function App() {
   useEffect(() => {
     if (!auth || !db) {
       setSetupError("Firebase 尚未初始化，請檢查環境變數設定。");
+      setLocalMode(true);
+      const records = loadLocalTransactions();
+      dispatch(setTransactions(records));
+      dispatch(setSyncStatus("local"));
       return;
     }
 
@@ -90,6 +113,15 @@ export default function App() {
           setUid(credential.user.uid);
         })
         .catch((signInError) => {
+          if (signInError.code === "auth/configuration-not-found") {
+            setLocalMode(true);
+            const records = loadLocalTransactions();
+            dispatch(setTransactions(records));
+            dispatch(setSyncStatus("local"));
+            setSetupError("Firebase 尚未啟用 Anonymous Auth，已切換本機模式。");
+            return;
+          }
+
           setSetupError(signInError.message || "匿名登入失敗");
           dispatch(setSyncStatus("failed"));
         });
@@ -99,7 +131,7 @@ export default function App() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (!db || !uid) {
+    if (localMode || !db || !uid) {
       return;
     }
 
@@ -137,10 +169,10 @@ export default function App() {
     );
 
     return () => unsubscribe();
-  }, [dispatch, startTransition, uid]);
+  }, [dispatch, localMode, startTransition, uid]);
 
   useEffect(() => {
-    if (!db || !uid) {
+    if (localMode || !db || !uid) {
       return;
     }
 
@@ -180,7 +212,7 @@ export default function App() {
     run().catch((autoError) => {
       console.warn("Recurring expense sync failed", autoError);
     });
-  }, [uid]);
+  }, [localMode, uid]);
 
   const sortedTransactions = useMemo(() => {
     return [...transactions].sort((a, b) => {
@@ -192,7 +224,19 @@ export default function App() {
   }, [transactions]);
 
   const handleAdd = (form) => {
-    if (!db || !uid) {
+    if (localMode || !db || !uid) {
+      const localItem = {
+        id: `local_${Date.now()}`,
+        ...form,
+        amount: Number(form.amount),
+        createdAtMs: Date.now(),
+        recurring: false,
+        uid: "local"
+      };
+      const next = [localItem, ...transactions];
+      saveLocalTransactions(next);
+      dispatch(setTransactions(next));
+      dispatch(setSyncStatus("local"));
       return;
     }
 
@@ -212,7 +256,7 @@ export default function App() {
   };
 
   const handleDelete = async (entry) => {
-    if (!entry?.id || !db) {
+    if (!entry?.id) {
       return;
     }
 
@@ -222,6 +266,15 @@ export default function App() {
     }
 
     setDeletingId(entry.id);
+    if (localMode || !db || entry.uid === "local") {
+      const next = transactions.filter((tx) => tx.id !== entry.id);
+      saveLocalTransactions(next);
+      dispatch(setTransactions(next));
+      dispatch(setSyncStatus("local"));
+      setDeletingId("");
+      return;
+    }
+
     deleteDoc(doc(db, "transactions", entry.id))
       .catch((deleteError) => {
         setSetupError(deleteError.message || "刪除失敗");
@@ -293,6 +346,7 @@ export default function App() {
           )}
           {isPending && <p className="mt-2 text-xs text-emerald-100">同步更新中...</p>}
           {setupError && <p className="mt-2 text-xs text-amber-200">{setupError}</p>}
+          {localMode && <p className="mt-2 text-xs text-slate-200">目前為本機模式，資料儲存在此裝置。</p>}
           {error && <p className="mt-2 text-xs text-rose-200">{error}</p>}
         </header>
 
