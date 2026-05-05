@@ -17,13 +17,12 @@ export default function EntryForm({ onSubmit, submitting }) {
     type: "expense",
     paymentMethod: "cash",
     amount: "",
-    item: "",
-    date: todayISO()
+    item: ""
   });
 
   const canSubmit = useMemo(() => {
-    return Number(form.amount) > 0 && form.item.trim().length > 0 && Boolean(form.date);
-  }, [form.amount, form.date, form.item]);
+    return Number(form.amount) > 0 && form.item.trim().length > 0;
+  }, [form.amount, form.item]);
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -33,12 +32,11 @@ export default function EntryForm({ onSubmit, submitting }) {
       return;
     }
 
-    onSubmit(form);
+    onSubmit({ ...form, date: todayISO() });
     setForm((prev) => ({
       ...prev,
       amount: "",
-      item: "",
-      date: todayISO()
+      item: ""
     }));
   };
 
@@ -107,15 +105,6 @@ export default function EntryForm({ onSubmit, submitting }) {
           />
         </label>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">日期</span>
-          <input
-            type="date"
-            value={form.date}
-            onChange={(event) => update("date", event.target.value)}
-            className="h-14 w-full rounded-2xl border border-slate-200 px-4 text-base outline-none ring-emerald-200 focus:ring"
-          />
-        </label>
       </div>
 
       <button
