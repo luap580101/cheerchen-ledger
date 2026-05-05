@@ -1,11 +1,12 @@
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Suspense, lazy, useEffect, useMemo, useState, useTransition } from "react";
-import { Cloud, CloudOff, LoaderCircle } from "lucide-react";
+import { Cloud, CloudOff, LoaderCircle, LogIn, LogOut } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import CalendarView from "./components/CalendarView";
 import EntryForm from "./components/EntryForm";
 import { addTransaction, setSelectedDate, setSyncStatus, setTransactions } from "./features/ledger/ledgerSlice";
-import { db } from "./firebase";
+import { auth, db, googleProvider } from "./firebase";
 
 const StatsPanel = lazy(() => import("./components/StatsPanel"));
 
@@ -19,15 +20,32 @@ export default function App() {
   const dispatch = useDispatch();
   const [isPending, startTransition] = useTransition();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const { transactions, selectedDate, syncStatus, submitStatus, error } = useSelector(
     (state) => state.ledger
   );
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user || null);
+      setAuthLoading(false);
+    });
+
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      dispatch(setTransactions([]));
+      return;
+    }
+
     dispatch(setSyncStatus("syncing"));
     const source = query(
       collection(db, "transactions"),
+      where("uid", "==", currentUser.uid),
       where("date", ">=", getFourMonthAgoISO()),
       orderBy("date", "desc")
     );
@@ -57,7 +75,7 @@ export default function App() {
     );
 
     return () => unsubscribe();
-  }, [dispatch]);
+  }, [currentUser, dispatch]);
 
   useEffect(() => {
     const onOnline = () => setIsOffline(false);
@@ -82,7 +100,22 @@ export default function App() {
   }, [transactions]);
 
   const handleAdd = (form) => {
-    dispatch(addTransaction(form));
+    if (!currentUser) {
+      return;
+    }
+    dispatch(addTransaction({ ...form, uid: currentUser.uid }));
+  };
+
+  const handleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch {
+      await signInWithRedirect(auth, googleProvider);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut(auth);
   };
 
   const syncLabel =
@@ -94,6 +127,34 @@ export default function App() {
         <header className="rounded-3xl bg-emerald-900/90 p-4 text-white shadow-card">
           <p className="text-xs uppercase tracking-[0.24em] text-emerald-200">CheerChen Ledger</p>
           <h1 className="mt-1 text-2xl font-black">個人記帳 PWA</h1>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <p className="truncate text-xs text-emerald-100">
+              {authLoading
+                ? "登入狀態檢查中..."
+                : currentUser
+                  ? `已登入：${currentUser.email || currentUser.displayName || currentUser.uid}`
+                  : "尚未登入"}
+            </p>
+            {currentUser ? (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-1 rounded-xl bg-emerald-50/10 px-3 py-2 text-xs font-semibold text-white"
+              >
+                <LogOut size={14} />
+                登出
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSignIn}
+                className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-emerald-900"
+              >
+                <LogIn size={14} />
+                Google 登入
+              </button>
+            )}
+          </div>
           <div className="mt-3 flex items-center gap-2 text-sm">
             {isOffline || syncStatus === "offline" ? (
               <CloudOff size={16} className="text-yellow-300" />
@@ -106,7 +167,13 @@ export default function App() {
           {error && <p className="mt-2 text-xs text-rose-200">{error}</p>}
         </header>
 
-        <EntryForm onSubmit={handleAdd} submitting={submitStatus === "loading"} />
+        {currentUser ? (
+          <EntryForm onSubmit={handleAdd} submitting={submitStatus === "loading"} />
+        ) : (
+          <section className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur">
+            <p className="text-sm text-slate-700">請先登入 Google 帳號後再開始記帳。</p>
+          </section>
+        )}
 
         <CalendarView
           transactions={sortedTransactions}

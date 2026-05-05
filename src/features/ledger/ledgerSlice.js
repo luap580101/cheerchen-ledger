@@ -8,6 +8,10 @@ export const addTransaction = createAsyncThunk(
   "ledger/addTransaction",
   async (payload, { rejectWithValue }) => {
     try {
+      if (!payload.uid) {
+        return rejectWithValue("Not authenticated");
+      }
+
       await addDoc(collection(db, "transactions"), {
         ...payload,
         amount: Number(payload.amount),
