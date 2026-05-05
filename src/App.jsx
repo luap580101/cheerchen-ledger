@@ -7,14 +7,61 @@ import {
   signInWithRedirect,
   signOut
 } from "firebase/auth";
+import { collection, doc, onSnapshot, serverTimestamp, setDoc, where, query } from "firebase/firestore";
 import { LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { auth, firebaseConfigIssues, googleProvider } from "./firebase";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { auth, db, firebaseConfigIssues, googleProvider } from "./firebase";
 
 const THEME_MODE_KEY = "cheerchen_theme_mode";
 const APP_VERSION = __APP_COMMIT__;
 const AUTH_MODE_KEY = "login";
 const AUTH_MODE_REGISTER = "register";
+const DAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+
+const pad2 = (value) => String(value).padStart(2, "0");
+
+const toISODate = (value) => {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+};
+
+const getTodayISO = () => toISODate(new Date());
+
+const shiftDate = (isoDate, days) => {
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return toISODate(date);
+};
+
+const toMonthKey = (isoDate) => isoDate.slice(0, 7);
+
+const getMonthLabel = (monthKey) => {
+  const [year, month] = monthKey.split("-");
+  return `${year} 年 ${Number(month)} 月`;
+};
+
+const getMonthGrid = (monthKey) => {
+  const [year, month] = monthKey.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const leadingEmpty = firstDay.getDay();
+  const days = [];
+
+  for (let index = 0; index < leadingEmpty; index += 1) {
+    days.push(null);
+  }
+
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    days.push(`${year}-${pad2(month)}-${pad2(day)}`);
+  }
+
+  while (days.length % 7 !== 0) {
+    days.push(null);
+  }
+
+  return days;
+};
 
 const toFirebaseEmail = (account) => {
   const normalized = String(account || "").trim().toLowerCase().replace(/\s+/g, "");
@@ -51,6 +98,12 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
+  const [weightEntries, setWeightEntries] = useState([]);
+  const [weightInput, setWeightInput] = useState("");
+  const [weightBusy, setWeightBusy] = useState(false);
+  const [weightError, setWeightError] = useState("");
+  const [selectedDate, setSelectedDate] = useState(getTodayISO());
+  const [monthKey, setMonthKey] = useState(() => toMonthKey(getTodayISO()));
   const currentView = views.find((view) => view.key === activeView) || views[0];
   const hasFirebaseConfig = firebaseConfigIssues.length === 0;
   const emailActionLabel = authMode === AUTH_MODE_KEY ? "帳號密碼登入" : "建立帳號";
@@ -63,6 +116,32 @@ export default function App() {
     }
     return "使用 Google 或 Email 登入，之後再把各頁資料接上。";
   }, [authLoading, user]);
+  const monthGrid = useMemo(() => getMonthGrid(monthKey), [monthKey]);
+  const weightMap = useMemo(
+    () => Object.fromEntries(weightEntries.map((entry) => [entry.date, entry])),
+    [weightEntries]
+  );
+  const selectedWeight = weightMap[selectedDate]?.weight ?? "";
+  const chartData = useMemo(() => {
+    const points = [];
+    for (let offset = -20; offset <= 20; offset += 1) {
+      const date = shiftDate(selectedDate, offset);
+      points.push({
+        date,
+        shortDate: date.slice(5),
+        weight: weightMap[date] ? Number(weightMap[date].weight) : null
+      });
+    }
+    return points;
+  }, [selectedDate, weightMap]);
+
+  useEffect(() => {
+    setMonthKey(toMonthKey(selectedDate));
+  }, [selectedDate]);
+
+  useEffect(() => {
+    setWeightInput(selectedWeight ? String(selectedWeight) : "");
+  }, [selectedWeight, selectedDate]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -112,6 +191,33 @@ export default function App() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!db || !user) {
+      setWeightEntries([]);
+      return;
+    }
+
+    const source = query(collection(db, "weights"), where("uid", "==", user.uid));
+    const unsubscribe = onSnapshot(
+      source,
+      (snapshot) => {
+        const next = snapshot.docs
+          .map((entry) => ({
+            id: entry.id,
+            ...entry.data()
+          }))
+          .sort((left, right) => left.date.localeCompare(right.date));
+        setWeightEntries(next);
+        setWeightError("");
+      },
+      (error) => {
+        setWeightError(error.message || "體重資料同步失敗");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
 
   const handleGoogleLogin = async () => {
     if (!auth || !googleProvider) {
@@ -189,6 +295,42 @@ export default function App() {
     } finally {
       setAuthBusy(false);
     }
+  };
+
+  const handleSaveWeight = async (event) => {
+    event.preventDefault();
+
+    if (!db || !user) {
+      return;
+    }
+
+    setWeightBusy(true);
+    setWeightError("");
+
+    try {
+      const numericWeight = Number(weightInput);
+      if (!Number.isFinite(numericWeight)) {
+        throw new Error("請輸入有效的體重數字");
+      }
+
+      const weightRef = doc(db, "weights", `${user.uid}_${selectedDate}`);
+      await setDoc(weightRef, {
+        uid: user.uid,
+        date: selectedDate,
+        weight: numericWeight,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      setWeightError(error.message || "儲存體重失敗");
+    } finally {
+      setWeightBusy(false);
+    }
+  };
+
+  const goToMonth = (offset) => {
+    const [year, month] = monthKey.split("-").map(Number);
+    const date = new Date(year, month - 1 + offset, 1);
+    setMonthKey(`${date.getFullYear()}-${pad2(date.getMonth() + 1)}`);
   };
 
   return (
@@ -361,11 +503,133 @@ export default function App() {
               <h2 className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-50">{currentView.title}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{currentView.description}</p>
 
-              <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50/80 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-400">
-                {activeView === "home"
-                  ? "首頁內容暫時保留空白，之後可以把原本記帳主畫面接回來。"
-                  : "體重變化頁目前只先開入口，之後再加入每日輸入、歷史列表與圖表。"}
-              </div>
+              {activeView === "home" ? (
+                <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50/80 p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-400">
+                  首頁內容暫時保留空白，之後可以把原本記帳主畫面接回來。
+                </div>
+              ) : (
+                <div className="mt-5 space-y-5">
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => goToMonth(-1)}
+                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                      >
+                        上月
+                      </button>
+                      <div className="text-center">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Calendar</p>
+                        <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-50">{getMonthLabel(monthKey)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => goToMonth(1)}
+                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                      >
+                        下月
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400 dark:text-slate-500">
+                      {DAY_LABELS.map((label) => (
+                        <div key={label} className="py-2">
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-7 gap-2">
+                      {monthGrid.map((date, index) => {
+                        if (!date) {
+                          return <div key={`empty_${index}`} className="aspect-square rounded-2xl bg-transparent" />;
+                        }
+
+                        const entry = weightMap[date];
+                        const selected = date === selectedDate;
+                        const isToday = date === getTodayISO();
+
+                        return (
+                          <button
+                            key={date}
+                            type="button"
+                            onClick={() => setSelectedDate(date)}
+                            className={[
+                              "aspect-square rounded-2xl border p-2 text-left transition",
+                              selected
+                                ? "border-lime-400 bg-lime-300 text-slate-950 shadow-[0_14px_30px_-18px_rgba(163,230,53,0.9)]"
+                                : "border-slate-200 bg-white/80 text-slate-700 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-900",
+                              isToday && !selected ? "ring-1 ring-sky-400/70" : ""
+                            ].join(" ")}
+                          >
+                            <div className="text-sm font-bold">{date.slice(-2)}</div>
+                            <div className="mt-2 text-[11px] leading-4 opacity-80">{entry ? `${entry.weight} kg` : "-"}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveWeight} className="rounded-3xl border border-slate-200 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Selected Day</p>
+                    <div className="mt-2 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-black text-slate-900 dark:text-slate-50">{selectedDate}</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">輸入當天體重，會直接同步到 Firestore。</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex gap-3">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.1"
+                        value={weightInput}
+                        onChange={(event) => setWeightInput(event.target.value)}
+                        placeholder="例如 68.4"
+                        className="h-12 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold outline-none ring-lime-300 focus:ring dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                      />
+                      <button
+                        type="submit"
+                        disabled={weightBusy}
+                        className="rounded-2xl bg-lime-300 px-5 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {weightBusy ? "儲存中" : "儲存"}
+                      </button>
+                    </div>
+                  </form>
+
+                  <div className="rounded-3xl border border-slate-200 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Weight Trend</p>
+                        <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-50">前後 20 天折線圖</p>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">中心日期：{selectedDate}</p>
+                    </div>
+
+                    <div className="mt-4 h-64 w-full">
+                      <ResponsiveContainer>
+                        <LineChart data={chartData} margin={{ top: 12, right: 8, left: -18, bottom: 0 }}>
+                          <XAxis dataKey="shortDate" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} />
+                          <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
+                          <Tooltip
+                            contentStyle={{
+                              borderRadius: 16,
+                              border: "1px solid rgba(148,163,184,0.2)",
+                              backgroundColor: "rgba(15,23,42,0.92)",
+                              color: "#f8fafc"
+                            }}
+                            formatter={(value) => [`${value} kg`, "體重"]}
+                            labelFormatter={(value, payload) => payload?.[0]?.payload?.date || value}
+                          />
+                          <Line type="monotone" dataKey="weight" stroke="#84cc16" strokeWidth={3} dot={{ r: 3, fill: "#bef264" }} connectNulls={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
                 <p className="font-semibold">目前登入中</p>
