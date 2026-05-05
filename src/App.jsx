@@ -9,11 +9,29 @@ import { addTransaction, setSelectedDate, setSyncStatus, setTransactions } from 
 import { auth, db, firebaseConfigIssues, googleProvider } from "./firebase";
 
 const StatsPanel = lazy(() => import("./components/StatsPanel"));
+const GUEST_TRANSACTIONS_KEY = "cheerchen_guest_transactions";
 
 const getFourMonthAgoISO = () => {
   const base = new Date();
   base.setMonth(base.getMonth() - 4);
   return base.toISOString().slice(0, 10);
+};
+
+const loadGuestTransactions = () => {
+  try {
+    const raw = localStorage.getItem(GUEST_TRANSACTIONS_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveGuestTransactions = (items) => {
+  localStorage.setItem(GUEST_TRANSACTIONS_KEY, JSON.stringify(items));
 };
 
 export default function App() {
@@ -44,7 +62,9 @@ export default function App() {
 
   useEffect(() => {
     if (!db || !currentUser) {
-      dispatch(setTransactions([]));
+      const guestRecords = loadGuestTransactions();
+      dispatch(setTransactions(guestRecords));
+      dispatch(setSyncStatus("guest"));
       return;
     }
 
@@ -107,6 +127,17 @@ export default function App() {
 
   const handleAdd = (form) => {
     if (!db || !currentUser) {
+      const entry = {
+        id: `guest-${Date.now()}`,
+        ...form,
+        amount: Number(form.amount),
+        createdAtMs: Date.now(),
+        uid: "guest"
+      };
+      const next = [entry, ...transactions];
+      saveGuestTransactions(next);
+      dispatch(setTransactions(next));
+      dispatch(setSyncStatus("guest"));
       return;
     }
     dispatch(addTransaction({ ...form, uid: currentUser.uid }));
@@ -125,6 +156,10 @@ export default function App() {
       try {
         await signInWithRedirect(auth, googleProvider);
       } catch (redirectError) {
+        if (redirectError.code === "auth/invalid-action-code" || error.code === "auth/invalid-action-code") {
+          setUiError("手機登入被 Firebase 擋下：請到 Firebase Console 的 Authentication > Settings > Authorized domains，加入目前網域。");
+          return;
+        }
         setUiError(redirectError.code || error.code || "Google 登入失敗");
       }
     }
@@ -136,7 +171,13 @@ export default function App() {
   };
 
   const syncLabel =
-    syncStatus === "syncing" ? "同步中" : syncStatus === "failed" ? "同步失敗" : "已同步";
+    syncStatus === "syncing"
+      ? "同步中"
+      : syncStatus === "failed"
+        ? "同步失敗"
+        : syncStatus === "guest"
+          ? "訪客模式（僅本機）"
+          : "已同步";
 
   return (
     <main className="min-h-dvh bg-app px-3 pb-20 pt-4 font-body text-slate-900">
@@ -195,13 +236,7 @@ export default function App() {
           {error && <p className="mt-2 text-xs text-rose-200">{error}</p>}
         </header>
 
-        {currentUser ? (
-          <EntryForm onSubmit={handleAdd} submitting={submitStatus === "loading"} />
-        ) : (
-          <section className="rounded-3xl bg-white/90 p-4 shadow-card backdrop-blur">
-            <p className="text-sm text-slate-700">請先登入 Google 帳號後再開始記帳。</p>
-          </section>
-        )}
+        <EntryForm onSubmit={handleAdd} submitting={currentUser && submitStatus === "loading"} />
 
         <CalendarView
           transactions={sortedTransactions}
